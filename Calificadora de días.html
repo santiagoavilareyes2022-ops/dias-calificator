@@ -1,0 +1,1022 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Calificador de Días</title>
+    <!-- Importar Firebase -->
+    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-database-compat.js"></script>
+    <style>
+        :root {
+            --bg-color: #2c2c2c;
+            --container-bg: #3a3a3a;
+            --text-color: #f0f0f0;
+            --border-color: #555;
+            --header-bg: #444;
+            --slider-bg: #666;
+            --slider-thumb: #888;
+            --dropdown-bg: #4a4a4a;
+            --dropdown-hover: #5a5a5a;
+            --primary-color: #4CAF50;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background-color: var(--container-bg);
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            color: #fff;
+        }
+
+        .sync-status {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 10px 0;
+            font-size: 0.9rem;
+        }
+
+        .sync-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+
+        .sync-indicator.synced {
+            background-color: var(--primary-color);
+        }
+
+        .sync-indicator.syncing {
+            background-color: #FFA500;
+            animation: pulse 1.5s infinite;
+        }
+
+        .sync-indicator.error {
+            background-color: #FF5252;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+
+        .controls {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+
+        .dropdown {
+            position: relative;
+            display: inline-block;
+        }
+
+        .dropdown-btn {
+            background-color: var(--dropdown-bg);
+            color: var(--text-color);
+            padding: 10px 15px;
+            border: 1px solid var(--border-color);
+            border-radius: 5px;
+            cursor: pointer;
+            min-width: 150px;
+            text-align: left;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .dropdown-btn::after {
+            content: "▼";
+            font-size: 0.8rem;
+            margin-left: 10px;
+        }
+
+        .dropdown-content {
+            display: none;
+            position: absolute;
+            background-color: var(--dropdown-bg);
+            min-width: 150px;
+            max-height: 200px;
+            overflow-y: auto;
+            box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2);
+            z-index: 1;
+            border-radius: 5px;
+            border: 1px solid var(--border-color);
+        }
+
+        .dropdown-content div {
+            color: var(--text-color);
+            padding: 12px 16px;
+            text-decoration: none;
+            display: block;
+            cursor: pointer;
+        }
+
+        .dropdown-content div:hover {
+            background-color: var(--dropdown-hover);
+        }
+
+        .dropdown:hover .dropdown-content {
+            display: block;
+        }
+
+        .calendar-container {
+            display: flex;
+            gap: 20px;
+        }
+
+        .months-sidebar {
+            width: 150px;
+            background-color: var(--header-bg);
+            border-radius: 8px;
+            padding: 10px;
+            max-height: 600px;
+            overflow-y: auto;
+        }
+
+        .month-item {
+            padding: 12px 10px;
+            text-align: center;
+            border-bottom: 1px solid var(--border-color);
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+
+        .month-item:hover {
+            background-color: var(--dropdown-hover);
+        }
+
+        .month-item.active {
+            background-color: #666;
+            font-weight: bold;
+            border-left: 3px solid var(--primary-color);
+        }
+
+        .days-container {
+            flex: 1;
+            overflow-x: auto;
+        }
+
+        .month-header {
+            text-align: center;
+            padding: 10px;
+            background-color: var(--header-bg);
+            border-radius: 8px 8px 0 0;
+            font-weight: bold;
+            font-size: 1.2rem;
+            margin-bottom: 10px;
+        }
+
+        .days-grid {
+            display: grid;
+            grid-template-columns: repeat(31, 1fr);
+            gap: 5px;
+            margin-bottom: 30px;
+        }
+
+        .day-header {
+            text-align: center;
+            padding: 8px 5px;
+            background-color: var(--header-bg);
+            border-radius: 5px;
+            font-weight: bold;
+            font-size: 0.9rem;
+        }
+
+        .day-cell {
+            height: 50px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid var(--border-color);
+            border-radius: 5px;
+            position: relative;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        .day-cell:hover {
+            transform: scale(1.05);
+            z-index: 5;
+        }
+
+        .day-cell .rating-display {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+        }
+
+        .day-cell.empty {
+            background-color: transparent;
+            border: 1px dashed var(--border-color);
+            cursor: default;
+        }
+
+        .day-cell.empty:hover {
+            transform: none;
+        }
+
+        .records {
+            background-color: var(--container-bg);
+            border-radius: 10px;
+            padding: 20px;
+            margin-top: 20px;
+        }
+
+        .records h2 {
+            margin-bottom: 15px;
+            color: #fff;
+            border-bottom: 2px solid var(--primary-color);
+            padding-bottom: 5px;
+        }
+
+        .records-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            gap: 15px;
+        }
+
+        .record-item {
+            background-color: var(--header-bg);
+            padding: 15px;
+            border-radius: 8px;
+            border-left: 4px solid var(--primary-color);
+        }
+
+        .record-item h3 {
+            margin-bottom: 8px;
+            font-size: 1.1rem;
+        }
+
+        .record-value {
+            font-size: 1.3rem;
+            font-weight: bold;
+        }
+
+        .instructions {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: var(--header-bg);
+            border-radius: 8px;
+            font-size: 0.9rem;
+            line-height: 1.5;
+        }
+
+        /* Colores para las calificaciones */
+        .rating-1 { background-color: #8B0000; }
+        .rating-2 { background-color: #A52A2A; }
+        .rating-3 { background-color: #CD5C5C; }
+        .rating-4 { background-color: #FF6347; }
+        .rating-5 { background-color: #FF8C00; }
+        .rating-6 { background-color: #FFA500; }
+        .rating-7 { background-color: #FFD700; }
+        .rating-8 { background-color: #ADFF2F; }
+        .rating-9 { background-color: #32CD32; }
+        .rating-10 { background-color: #006400; }
+
+        /* Transiciones suaves entre colores */
+        .rating-1-5 { background-color: #962323; }
+        .rating-2-5 { background-color: #B94A4A; }
+        .rating-3-5 { background-color: #E57373; }
+        .rating-4-5 { background-color: #FF7F50; }
+        .rating-5-5 { background-color: #FFA500; }
+        .rating-6-5 { background-color: #FFC125; }
+        .rating-7-5 { background-color: #D2FF4D; }
+        .rating-8-5 { background-color: #7CFC00; }
+        .rating-9-5 { background-color: #228B22; }
+
+        /* Estilos para el modal de calificación */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 100;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.7);
+        }
+
+        .modal-content {
+            background-color: var(--container-bg);
+            margin: 10% auto;
+            padding: 20px;
+            border-radius: 10px;
+            width: 350px;
+            text-align: center;
+            max-height: 80vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .modal-title {
+            margin-bottom: 15px;
+        }
+
+        .rating-scroll-container {
+            flex: 1;
+            overflow-y: auto;
+            max-height: 400px;
+            margin: 15px 0;
+            border: 1px solid var(--border-color);
+            border-radius: 5px;
+            padding: 10px;
+        }
+
+        .rating-options {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+        }
+
+        .rating-option {
+            padding: 12px 8px;
+            background-color: var(--dropdown-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 5px;
+            cursor: pointer;
+            text-align: center;
+            transition: transform 0.2s;
+        }
+
+        .rating-option:hover {
+            background-color: var(--dropdown-hover);
+            transform: scale(1.05);
+        }
+
+        .close-btn {
+            background-color: #666;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin-top: 15px;
+            font-size: 1rem;
+        }
+
+        .close-btn:hover {
+            background-color: #777;
+        }
+
+        /* Personalización de la barra de desplazamiento */
+        .rating-scroll-container::-webkit-scrollbar {
+            width: 12px;
+        }
+
+        .rating-scroll-container::-webkit-scrollbar-track {
+            background: var(--dropdown-bg);
+            border-radius: 6px;
+        }
+
+        .rating-scroll-container::-webkit-scrollbar-thumb {
+            background: var(--slider-bg);
+            border-radius: 6px;
+        }
+
+        .rating-scroll-container::-webkit-scrollbar-thumb:hover {
+            background: var(--slider-thumb);
+        }
+
+        @media (max-width: 768px) {
+            .controls {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            
+            .dropdown {
+                width: 100%;
+            }
+            
+            .dropdown-btn {
+                width: 100%;
+            }
+            
+            .calendar-container {
+                flex-direction: column;
+            }
+            
+            .months-sidebar {
+                width: 100%;
+                max-height: 200px;
+                overflow-x: auto;
+                display: flex;
+                flex-wrap: wrap;
+            }
+            
+            .month-item {
+                flex: 1;
+                min-width: 80px;
+            }
+            
+            .days-grid {
+                grid-template-columns: repeat(10, 1fr);
+            }
+            
+            .modal-content {
+                width: 90%;
+                margin: 5% auto;
+            }
+            
+            .rating-options {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Calificador de Días</h1>
+            <p>Califica cada día del año y lleva un registro de tus mejores y peores momentos</p>
+            <div class="sync-status">
+                <div class="sync-indicator" id="sync-indicator"></div>
+                <span id="sync-status-text">Conectando...</span>
+            </div>
+        </header>
+
+        <div class="controls">
+            <div class="dropdown">
+                <div class="dropdown-btn" id="year-display">2023</div>
+                <div class="dropdown-content" id="year-options">
+                    <!-- Las opciones de año se generarán con JavaScript -->
+                </div>
+            </div>
+        </div>
+
+        <div class="calendar-container">
+            <div class="months-sidebar" id="months-sidebar">
+                <!-- Los meses se generarán con JavaScript -->
+            </div>
+            
+            <div class="days-container">
+                <div class="month-header" id="current-month-header">Noviembre 2023</div>
+                
+                <div class="days-grid" id="days-grid">
+                    <!-- Los encabezados de días y celdas se generarán con JavaScript -->
+                </div>
+            </div>
+        </div>
+
+        <div class="records">
+            <h2>Récords y Estadísticas</h2>
+            <div class="records-grid" id="records-container">
+                <!-- Los récords se generarán con JavaScript -->
+            </div>
+        </div>
+
+        <div class="instructions">
+            <h3>Instrucciones:</h3>
+            <p>1. Selecciona un año usando el menú desplegable en la parte superior.</p>
+            <p>2. Selecciona un mes en la barra lateral izquierda (puedes desplazarte).</p>
+            <p>3. Haz clic en cualquier día del calendario para calificarlo del 1 al 10.</p>
+            <p>4. Los colores van del rojo (días malos) al verde (días buenos), pasando por naranja y amarillo.</p>
+            <p>5. Tus calificaciones se sincronizan automáticamente entre dispositivos.</p>
+        </div>
+    </div>
+
+    <!-- Modal para seleccionar calificación -->
+    <div id="rating-modal" class="modal">
+        <div class="modal-content">
+            <h3 class="modal-title">Calificar día</h3>
+            <p id="selected-date">Selecciona una calificación para este día:</p>
+            
+            <div class="rating-scroll-container">
+                <div class="rating-options" id="rating-options">
+                    <!-- Las opciones de calificación se generarán con JavaScript -->
+                </div>
+            </div>
+            
+            <button class="close-btn" id="close-modal">Cerrar</button>
+        </div>
+    </div>
+
+    <script>
+        // ✅ CONFIGURACIÓN DE FIREBASE - CON TUS DATOS REALES
+        const firebaseConfig = {
+            apiKey: "AIzaSyAf4z5OSTRlQGhyw6-TSflebjgjybBpRjE",
+            authDomain: "calificador-de-dias.firebaseapp.com",
+            databaseURL: "https://calificador-de-dias-default-rtdb.firebaseio.com",
+            projectId: "calificador-de-dias",
+            storageBucket: "calificador-de-dias.firebasestorage.app",
+            messagingSenderId: "680376457419",
+            appId: "1:680376457419:web:e91c5efcff537f43a2a34e"
+        };
+
+        // ✅ INICIALIZAR FIREBASE
+        firebase.initializeApp(firebaseConfig);
+        const database = firebase.database();
+
+        document.addEventListener('DOMContentLoaded', function() {
+            // Elementos del DOM
+            const yearDisplay = document.getElementById('year-display');
+            const yearOptions = document.getElementById('year-options');
+            const monthsSidebar = document.getElementById('months-sidebar');
+            const currentMonthHeader = document.getElementById('current-month-header');
+            const daysGrid = document.getElementById('days-grid');
+            const recordsContainer = document.getElementById('records-container');
+            const ratingModal = document.getElementById('rating-modal');
+            const selectedDateDisplay = document.getElementById('selected-date');
+            const ratingOptions = document.getElementById('rating-options');
+            const closeModalBtn = document.getElementById('close-modal');
+            const syncIndicator = document.getElementById('sync-indicator');
+            const syncStatusText = document.getElementById('sync-status-text');
+            
+            // Estado de la aplicación
+            let currentYear = new Date().getFullYear();
+            let currentMonth = new Date().getMonth(); // Mes actual (0-11)
+            let ratings = {}; // Almacenará todas las calificaciones
+            let selectedDateForRating = null; // Fecha seleccionada para calificar
+            let userId = null; // ID de usuario para sincronización
+            
+            // Nombres de los meses
+            const monthNames = [
+                'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+                'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
+            ];
+            
+            // Días por mes (sin año bisiesto)
+            const daysInMonth = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+            
+            // Inicializar la aplicación
+            function init() {
+                initializeUser();
+                updateYearDisplay();
+                renderYearOptions();
+                renderMonthsSidebar();
+                renderDaysGrid();
+                updateRecords();
+                renderRatingOptions();
+                
+                // Configurar event listeners
+                closeModalBtn.addEventListener('click', closeRatingModal);
+                window.addEventListener('click', function(event) {
+                    if (event.target === ratingModal) {
+                        closeRatingModal();
+                    }
+                });
+            }
+            
+            // Inicializar usuario (para sincronización)
+            function initializeUser() {
+                // Generar un ID de usuario único o usar uno existente
+                userId = localStorage.getItem('dayRaterUserId');
+                if (!userId) {
+                    userId = 'user_' + Math.random().toString(36).substr(2, 9);
+                    localStorage.setItem('dayRaterUserId', userId);
+                }
+                
+                loadRatings();
+            }
+            
+            // Cargar calificaciones desde Firebase
+            function loadRatings() {
+                updateSyncStatus('Cargando...', 'syncing');
+                
+                database.ref('ratings/' + userId).once('value')
+                    .then(snapshot => {
+                        const data = snapshot.val();
+                        if (data) {
+                            ratings = data;
+                            updateSyncStatus('Sincronizado', 'synced');
+                        } else {
+                            // Si no hay datos en Firebase, cargar desde localStorage
+                            loadFromLocalStorage();
+                        }
+                        renderDaysGrid();
+                        updateRecords();
+                    })
+                    .catch(error => {
+                        console.error('Error al cargar desde Firebase:', error);
+                        loadFromLocalStorage();
+                    });
+            }
+            
+            // Cargar desde localStorage como respaldo
+            function loadFromLocalStorage() {
+                const storedRatings = localStorage.getItem(`dayRatings_${userId}`);
+                if (storedRatings) {
+                    ratings = JSON.parse(storedRatings);
+                    updateSyncStatus('Cargado localmente', 'synced');
+                } else {
+                    ratings = {};
+                    updateSyncStatus('Listo', 'synced');
+                }
+            }
+            
+            // Guardar calificaciones en Firebase y localStorage
+            function saveRatings() {
+                updateSyncStatus('Guardando...', 'syncing');
+                
+                // Guardar en localStorage
+                localStorage.setItem(`dayRatings_${userId}`, JSON.stringify(ratings));
+                
+                // Guardar en Firebase
+                database.ref('ratings/' + userId).set(ratings)
+                    .then(() => {
+                        updateSyncStatus('Sincronizado', 'synced');
+                    })
+                    .catch(error => {
+                        console.error('Error al guardar en Firebase:', error);
+                        updateSyncStatus('Error de sincronización', 'error');
+                    });
+            }
+            
+            // Actualizar estado de sincronización
+            function updateSyncStatus(text, status) {
+                syncStatusText.textContent = text;
+                syncIndicator.className = 'sync-indicator ' + status;
+            }
+            
+            // Cargar calificaciones desde localStorage
+            function loadRatingsOld() {
+                const storedRatings = localStorage.getItem(`dayRatings_${currentYear}`);
+                if (storedRatings) {
+                    ratings = JSON.parse(storedRatings);
+                } else {
+                    ratings = {};
+                }
+            }
+            
+            // Actualizar display del año
+            function updateYearDisplay() {
+                yearDisplay.textContent = currentYear;
+            }
+            
+            // Renderizar opciones de año
+            function renderYearOptions() {
+                yearOptions.innerHTML = '';
+                const currentYearVal = new Date().getFullYear();
+                
+                for (let year = currentYearVal - 5; year <= currentYearVal + 5; year++) {
+                    const yearOption = document.createElement('div');
+                    yearOption.textContent = year;
+                    yearOption.addEventListener('click', () => {
+                        currentYear = year;
+                        updateYearDisplay();
+                        loadRatings();
+                        renderMonthsSidebar();
+                        renderDaysGrid();
+                        updateRecords();
+                    });
+                    
+                    yearOptions.appendChild(yearOption);
+                }
+            }
+            
+            // Renderizar barra lateral de meses
+            function renderMonthsSidebar() {
+                monthsSidebar.innerHTML = '';
+                
+                monthNames.forEach((monthName, index) => {
+                    const monthItem = document.createElement('div');
+                    monthItem.className = `month-item ${index === currentMonth ? 'active' : ''}`;
+                    monthItem.textContent = monthName;
+                    monthItem.dataset.monthIndex = index;
+                    
+                    monthItem.addEventListener('click', () => {
+                        document.querySelector('.month-item.active').classList.remove('active');
+                        monthItem.classList.add('active');
+                        currentMonth = index;
+                        updateMonthHeader();
+                        renderDaysGrid();
+                    });
+                    
+                    monthsSidebar.appendChild(monthItem);
+                });
+            }
+            
+            // Actualizar encabezado del mes actual
+            function updateMonthHeader() {
+                currentMonthHeader.textContent = `${monthNames[currentMonth]} ${currentYear}`;
+            }
+            
+            // Renderizar la cuadrícula de días
+            function renderDaysGrid() {
+                daysGrid.innerHTML = '';
+                updateMonthHeader();
+                
+                // Calcular días en este mes
+                const daysInThisMonth = currentMonth === 1 && isLeapYear(currentYear) ? 
+                                        29 : daysInMonth[currentMonth];
+                
+                // Crear encabezados de días (1-31)
+                for (let day = 1; day <= 31; day++) {
+                    const dayHeader = document.createElement('div');
+                    dayHeader.className = 'day-header';
+                    dayHeader.textContent = day;
+                    daysGrid.appendChild(dayHeader);
+                }
+                
+                // Crear celdas para cada día
+                for (let day = 1; day <= 31; day++) {
+                    const dayCell = document.createElement('div');
+                    
+                    if (day <= daysInThisMonth) {
+                        const ratingKey = `${currentYear}-${currentMonth}-${day}`;
+                        const currentRating = ratings[ratingKey] || '';
+                        
+                        dayCell.className = 'day-cell';
+                        if (currentRating) {
+                            dayCell.classList.add(getRatingClass(parseFloat(currentRating)));
+                        }
+                        
+                        const ratingDisplay = document.createElement('div');
+                        ratingDisplay.className = 'rating-display';
+                        ratingDisplay.textContent = currentRating || '';
+                        ratingDisplay.dataset.date = ratingKey;
+                        
+                        ratingDisplay.addEventListener('click', () => {
+                            selectedDateForRating = ratingKey;
+                            selectedDateDisplay.textContent = `Selecciona una calificación para el ${day} de ${monthNames[currentMonth]}:`;
+                            openRatingModal();
+                        });
+                        
+                        dayCell.appendChild(ratingDisplay);
+                    } else {
+                        dayCell.className = 'day-cell empty';
+                    }
+                    
+                    daysGrid.appendChild(dayCell);
+                }
+            }
+            
+            // Renderizar opciones de calificación en el modal
+            function renderRatingOptions() {
+                ratingOptions.innerHTML = '';
+                
+                // Generar opciones del 1 al 10 con incrementos de 0.1
+                for (let rating = 1; rating <= 10; rating += 0.1) {
+                    const roundedRating = Math.round(rating * 10) / 10;
+                    const ratingOption = document.createElement('div');
+                    ratingOption.className = 'rating-option';
+                    ratingOption.textContent = roundedRating.toFixed(1);
+                    ratingOption.style.backgroundColor = getRatingColor(roundedRating);
+                    
+                    ratingOption.addEventListener('click', () => {
+                        applyRating(roundedRating);
+                        closeRatingModal();
+                    });
+                    
+                    ratingOptions.appendChild(ratingOption);
+                }
+            }
+            
+            // Aplicar calificación seleccionada
+            function applyRating(rating) {
+                if (!selectedDateForRating) return;
+                
+                // Actualizar ratings
+                ratings[selectedDateForRating] = rating;
+                
+                // Actualizar visualización
+                const ratingDisplay = document.querySelector(`.rating-display[data-date="${selectedDateForRating}"]`);
+                if (ratingDisplay) {
+                    ratingDisplay.textContent = rating.toFixed(1);
+                    
+                    // Actualizar color
+                    const dayCell = ratingDisplay.parentElement;
+                    // Remover clases de rating anteriores
+                    dayCell.className = 'day-cell';
+                    // Añadir nueva clase de rating
+                    dayCell.classList.add(getRatingClass(rating));
+                }
+                
+                // Guardar y actualizar récords
+                saveRatings();
+                updateRecords();
+            }
+            
+            // Abrir modal de calificación
+            function openRatingModal() {
+                ratingModal.style.display = 'block';
+            }
+            
+            // Cerrar modal de calificación
+            function closeRatingModal() {
+                ratingModal.style.display = 'none';
+                selectedDateForRating = null;
+            }
+            
+            // Obtener clase CSS según la calificación
+            function getRatingClass(rating) {
+                if (rating >= 1 && rating < 2) return 'rating-1';
+                if (rating >= 2 && rating < 3) return 'rating-2';
+                if (rating >= 3 && rating < 4) return 'rating-3';
+                if (rating >= 4 && rating < 5) return 'rating-4';
+                if (rating >= 5 && rating < 6) return 'rating-5';
+                if (rating >= 6 && rating < 7) return 'rating-6';
+                if (rating >= 7 && rating < 8) return 'rating-7';
+                if (rating >= 8 && rating < 9) return 'rating-8';
+                if (rating >= 9 && rating < 10) return 'rating-9';
+                if (rating === 10) return 'rating-10';
+                
+                // Para valores con decimales específicos
+                const decimal = rating - Math.floor(rating);
+                if (decimal === 0.5) {
+                    return `rating-${Math.floor(rating)}-5`;
+                }
+                
+                return '';
+            }
+            
+            // Obtener color según la calificación (para el modal)
+            function getRatingColor(rating) {
+                if (rating >= 1 && rating < 2) return '#8B0000';
+                if (rating >= 2 && rating < 3) return '#A52A2A';
+                if (rating >= 3 && rating < 4) return '#CD5C5C';
+                if (rating >= 4 && rating < 5) return '#FF6347';
+                if (rating >= 5 && rating < 6) return '#FF8C00';
+                if (rating >= 6 && rating < 7) return '#FFA500';
+                if (rating >= 7 && rating < 8) return '#FFD700';
+                if (rating >= 8 && rating < 9) return '#ADFF2F';
+                if (rating >= 9 && rating < 10) return '#32CD32';
+                if (rating === 10) return '#006400';
+                
+                return '#4a4a4a';
+            }
+            
+            // Verificar si es año bisiesto
+            function isLeapYear(year) {
+                return (year % 4 === 0 && year % 100 !== 0) || (year % 400 === 0);
+            }
+            
+            // Actualizar sección de récords
+            function updateRecords() {
+                // Calcular estadísticas
+                const stats = calculateStatistics();
+                
+                // Limpiar récords anteriores
+                recordsContainer.innerHTML = '';
+                
+                // Crear elementos de récord
+                const recordTemplates = [
+                    {
+                        title: 'Mejor día del año',
+                        value: stats.bestDay ? `${stats.bestDay.date} - ${stats.bestDay.rating}` : 'Sin datos',
+                        description: stats.bestDay ? `El ${stats.bestDay.date} fue tu mejor día` : 'Aún no hay calificaciones'
+                    },
+                    {
+                        title: 'Peor día del año',
+                        value: stats.worstDay ? `${stats.worstDay.date} - ${stats.worstDay.rating}` : 'Sin datos',
+                        description: stats.worstDay ? `El ${stats.worstDay.date} fue tu peor día` : 'Aún no hay calificaciones'
+                    },
+                    {
+                        title: 'Promedio anual',
+                        value: stats.average ? stats.average.toFixed(1) : 'Sin datos',
+                        description: stats.average ? 'Tu calificación promedio este año' : 'Aún no hay calificaciones'
+                    },
+                    {
+                        title: 'Días calificados',
+                        value: stats.ratedDays || '0',
+                        description: 'Total de días que has calificado este año'
+                    },
+                    {
+                        title: 'Mejor mes',
+                        value: stats.bestMonth ? `${monthNames[stats.bestMonth.month]} - ${stats.bestMonth.avg.toFixed(1)}` : 'Sin datos',
+                        description: stats.bestMonth ? 'Tu mes con mejor promedio' : 'Aún no hay calificaciones'
+                    },
+                    {
+                        title: 'Peor mes',
+                        value: stats.worstMonth ? `${monthNames[stats.worstMonth.month]} - ${stats.worstMonth.avg.toFixed(1)}` : 'Sin datos',
+                        description: stats.worstMonth ? 'Tu mes con peor promedio' : 'Aún no hay calificaciones'
+                    }
+                ];
+                
+                // Renderizar récords
+                recordTemplates.forEach(record => {
+                    const recordElement = document.createElement('div');
+                    recordElement.className = 'record-item';
+                    
+                    recordElement.innerHTML = `
+                        <h3>${record.title}</h3>
+                        <div class="record-value">${record.value}</div>
+                        <p>${record.description}</p>
+                    `;
+                    
+                    recordsContainer.appendChild(recordElement);
+                });
+            }
+            
+            // Calcular estadísticas
+            function calculateStatistics() {
+                const ratedDays = Object.keys(ratings).map(date => {
+                    return {
+                        date: formatDate(date),
+                        rating: ratings[date],
+                        month: parseInt(date.split('-')[1])
+                    };
+                });
+                
+                if (ratedDays.length === 0) {
+                    return {};
+                }
+                
+                // Encontrar mejor y peor día
+                const bestDay = ratedDays.reduce((best, current) => 
+                    current.rating > best.rating ? current : best
+                );
+                
+                const worstDay = ratedDays.reduce((worst, current) => 
+                    current.rating < worst.rating ? current : worst
+                );
+                
+                // Calcular promedio anual
+                const totalRating = ratedDays.reduce((sum, day) => sum + day.rating, 0);
+                const average = totalRating / ratedDays.length;
+                
+                // Calcular promedios por mes
+                const monthlyStats = {};
+                ratedDays.forEach(day => {
+                    if (!monthlyStats[day.month]) {
+                        monthlyStats[day.month] = {
+                            total: 0,
+                            count: 0
+                        };
+                    }
+                    
+                    monthlyStats[day.month].total += day.rating;
+                    monthlyStats[day.month].count++;
+                });
+                
+                // Convertir a promedios
+                Object.keys(monthlyStats).forEach(month => {
+                    monthlyStats[month].avg = monthlyStats[month].total / monthlyStats[month].count;
+                });
+                
+                // Encontrar mejor y peor mes
+                const monthsWithData = Object.keys(monthlyStats).map(month => {
+                    return {
+                        month: parseInt(month),
+                        avg: monthlyStats[month].avg
+                    };
+                });
+                
+                const bestMonth = monthsWithData.reduce((best, current) => 
+                    current.avg > best.avg ? current : best
+                );
+                
+                const worstMonth = monthsWithData.reduce((worst, current) => 
+                    current.avg < worst.avg ? current : worst
+                );
+                
+                return {
+                    bestDay,
+                    worstDay,
+                    average,
+                    ratedDays: ratedDays.length,
+                    bestMonth,
+                    worstMonth
+                };
+            }
+            
+            // Formatear fecha para mostrar
+            function formatDate(dateString) {
+                const parts = dateString.split('-');
+                const year = parts[0];
+                const month = parseInt(parts[1]);
+                const day = parts[2];
+                
+                return `${day} de ${monthNames[month]}`;
+            }
+            
+            // Inicializar la aplicación
+            init();
+        });
+    </script>
+</body>
+</html>
